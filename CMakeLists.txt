@@ -66,6 +66,11 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/User/oled/oled_demo.c
 )
 
+# DHT22 uses microsecond-level pulse timing. Keep this source optimized even in Debug builds.
+set_source_files_properties(
+    ${CMAKE_CURRENT_SOURCE_DIR}/User/bsp/dht22.c
+    PROPERTIES COMPILE_OPTIONS "-O2"
+)
 # Add user include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/User/app

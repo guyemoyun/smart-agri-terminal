@@ -35,7 +35,7 @@
 #include "light.h"
 #include "soil.h"
 #include "adc.h" // hadc1/hdma_adc1 与 MX_ADC1_Init 声明（HAL_ADC_Start_DMA 需要 &hadc1）
-#include "oled_demo.h"
+#include "oled.h"
 #include "sensor_service.h"
 /**
   * @brief  软件空循环毫秒级延时（72MHz 主频下标定）
@@ -75,6 +75,9 @@ void delay_ms(uint32_t ms)
   * @param  us  uint32_t，延时微秒数（内部 us*72 需小于 2^32，即 us < 约 59.6 秒）
   * @retval 无
   */
+#if defined(__GNUC__)
+__attribute__((optimize("O2")))
+#endif
 void delay_us(uint32_t us)
 {
     static uint8_t initialized = 0;
@@ -297,7 +300,7 @@ void app_main(void)
 {
     uint32_t tick_heartbeat = HAL_GetTick();
 
-    oled_demo();
+    OLED_Init();
     Debug_UART_Receive_Start();
     CO2_UART_Receive_Start();
     DHT22_Init();
