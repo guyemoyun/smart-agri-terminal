@@ -36,6 +36,7 @@
 #include "soil.h"
 #include "adc.h" // hadc1/hdma_adc1 与 MX_ADC1_Init 声明（HAL_ADC_Start_DMA 需要 &hadc1）
 #include "oled_demo.h"
+#include "sensor_service.h"
 /**
   * @brief  软件空循环毫秒级延时（72MHz 主频下标定）
   * @note   原理：双层空循环消耗 CPU 周期实现延时。实测精度 1ms 误差 ±0.02ms、
@@ -290,14 +291,11 @@ int __io_putchar(int ch)
 //#include "dht22.h"
 //#include "light.h"
 
-volatile uint16_t adc_values[2]; // ADC+DMA 双通道缓冲：[0]=光照 [1]=土壤（volatile：DMA 后台写、CPU 读）
+volatile uint16_t adc_values[2];
 
 void app_main(void)
 {
     uint32_t tick_heartbeat = HAL_GetTick();
-    uint32_t tick_sensor = HAL_GetTick();
-    uint16_t lux = 0;
-    uint8_t soil = 0;
 
     oled_demo();
     Debug_UART_Receive_Start();
@@ -315,27 +313,19 @@ void app_main(void)
         Error_Handler();
     }
 
+    Sensor_ServiceInit();
     printf("System ready\r\n");
 
     while (1)
     {
         uint32_t now = HAL_GetTick();
 
-        /* 500 ms 翻转一次，完整闪烁周期为 1 s。 */
         if ((now - tick_heartbeat) >= 500U)
         {
             tick_heartbeat = now;
             HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
         }
 
-        /* 当前阶段每秒更新一次 ADC 派生数据，主循环不再被 HAL_Delay 阻塞。 */
-        if ((now - tick_sensor) >= 1000U)
-        {
-            tick_sensor = now;
-            lux = GetLux();
-            soil = GetSoilHumidity();
-            printf("Lux: %u, Soil: %u\r\n", (unsigned int)lux, (unsigned int)soil);
-        }
+        Sensor_ServiceTask(now);
     }
 }
-

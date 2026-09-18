@@ -59,6 +59,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/User/bsp/light.c
     ${CMAKE_CURRENT_SOURCE_DIR}/User/bsp/soil.c
 
+    # Sensor service
+    ${CMAKE_CURRENT_SOURCE_DIR}/User/service/sensor_service.c
     # OLED
     ${CMAKE_CURRENT_SOURCE_DIR}/User/oled/oled.c
     ${CMAKE_CURRENT_SOURCE_DIR}/User/oled/oled_demo.c
@@ -69,6 +71,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/User/app
     ${CMAKE_CURRENT_SOURCE_DIR}/User/bsp
     ${CMAKE_CURRENT_SOURCE_DIR}/User/oled
+    ${CMAKE_CURRENT_SOURCE_DIR}/User/service
 )
 
 # Add project symbols (macros)

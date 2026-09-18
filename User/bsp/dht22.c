@@ -25,7 +25,7 @@
 static void DHT22_SetOutputMode(void);      /* 数据脚切推挽输出（仅发起始信号的几 ms 内使用） */
 static void DHT22_SetInputMode(void);       /* 数据脚切浮空输入（读数据期间释放总线） */
 static uint8_t DHT22_SendStartSignal(void); /* 发起始信号+等应答 @return 0=成功 1/2=超时 */
-static uint8_t DHT22_ReadByte(void);        /* 按位收 1 字节 @return 字节值，0xFF=位等待超时 */
+static uint8_t DHT22_ReadByte(uint8_t *value); /* 按位收 1 字节，返回0=成功 */
 
 /************************* 引脚模式配置 *************************/
 /**
@@ -94,53 +94,43 @@ void DHT22_Init(void)
   */
 uint8_t DHT22_ReadData(float *temp, float *humi)
 {
-    uint8_t buf[5] = {0};  // 存储40位数据：湿度高8位、湿度低8位、温度高8位、温度低8位、校验和
-    uint8_t i, ret = 0;
+    uint8_t buf[5] = {0};
+    uint8_t i;
+    uint8_t ret = DHT22_SendStartSignal();
 
-    // ① 发送起始信号并等待应答
-    ret = DHT22_SendStartSignal();
-    if(ret != 0)
+    if (ret != 0U)
     {
-        return 1;  // 响应超时
+        return ret;
     }
-    
-    // 2. 读取40位数据（5个字节）
-    for(i = 0; i < 5; i++)
+
+    for (i = 0U; i < 5U; i++)
     {
-        buf[i] = DHT22_ReadByte();
-        if(buf[i] == 0xFF)  // 读取字节超时
+        if (DHT22_ReadByte(&buf[i]) != 0U)
         {
-            return 2;
+            return 3U;
         }
     }
-    
+
     DHT22_SetOutputMode();
-    // 主机释放总线（拉高）
     HAL_GPIO_WritePin(DHT22_GPIO_PORT, DHT22_GPIO_PIN, GPIO_PIN_SET);
 
-    // 3. 校验数据（前4字节之和的低8位等于第5字节）
-    if(((buf[0] + buf[1] + buf[2] + buf[3]) & 0xFF) != buf[4])
+    if (((buf[0] + buf[1] + buf[2] + buf[3]) & 0xFFU) != buf[4])
     {
-        return 3;  // 校验失败
+        return 3U;
     }
-    
-    // 4. 解析温湿度数据
-    // 湿度：(buf[0]<<8 | buf[1]) / 10.0 （单位：%RH）
+
     *humi = (float)((buf[0] << 8) | buf[1]) / 10.0f;
-    
-    // 温度：(buf[2]<<8 | buf[3]) / 10.0 （单位：℃，buf[2]最高位为1表示负温度）
-    if(buf[2] & 0x80)  // 负温度
+    if (buf[2] & 0x80U)
     {
-        *temp = (float)(((buf[2] & 0x7F) << 8) | buf[3]) / -10.0f;
+        *temp = (float)(((buf[2] & 0x7FU) << 8) | buf[3]) / -10.0f;
     }
-    else  // 正温度
+    else
     {
         *temp = (float)((buf[2] << 8) | buf[3]) / 10.0f;
     }
-    
-    return 0;  // 读取成功
-}
 
+    return 0U;
+}
 /************************* 私有函数实现 *************************/
 /**
   * @brief  发送主机起始信号并等待传感器应答
@@ -173,7 +163,7 @@ static uint8_t DHT22_SendStartSignal(void)
         delay_us(1);
         if(--timeout == 0)
         {
-            return 1;  // 响应超时
+            return 1;  // 响应开始超时
         }
     }
 
@@ -184,7 +174,7 @@ static uint8_t DHT22_SendStartSignal(void)
         delay_us(1);
         if(--timeout == 0)
         {
-            return 2;  // 响应超时
+            return 2;  // 响应结束超时
         }
     } 
     return 0;  // 响应成功
@@ -202,7 +192,7 @@ static uint8_t DHT22_SendStartSignal(void)
   *         每个等待循环带超时计数（约 100us），线卡死时返回 0xFF 交由上层处理。
   * @return uint8_t  读到的字节值；0xFF 表示某位等待超时（上层按错误处理）
   */
-static uint8_t DHT22_ReadByte(void)
+static uint8_t DHT22_ReadByte(uint8_t *value)
 {
     uint8_t byte = 0;
     uint32_t timeout = 0;
@@ -218,7 +208,7 @@ static uint8_t DHT22_ReadByte(void)
             delay_us(1);
             if(--timeout == 0)
             {
-                return 0xFF;  // 超时
+                return 1U;  // 超时
             }
         }
 
@@ -229,7 +219,7 @@ static uint8_t DHT22_ReadByte(void)
             delay_us(1);
             if(--timeout == 0)
             {
-                return 0xFF;  // 超时
+                return 1U;  // 超时
             }
         }
         
@@ -241,7 +231,6 @@ static uint8_t DHT22_ReadByte(void)
             byte |= 0x01;  // 高电平持续超过50us，为1
         }   
     }
-    
-    return byte;
+    *value = byte;
+    return 0U;
 }
-
