@@ -65,6 +65,15 @@ void Error_Handler(void);
 #define CO2_UART2_TX_GPIO_Port GPIOA
 #define CO2_UART2_RX_Pin GPIO_PIN_3
 #define CO2_UART2_RX_GPIO_Port GPIOA
+#define LORA_NSS_Pin GPIO_PIN_4
+#define LORA_NSS_GPIO_Port GPIOA
+#define LORA_BUSY_Pin GPIO_PIN_0
+#define LORA_BUSY_GPIO_Port GPIOB
+#define LORA_RESET_Pin GPIO_PIN_1
+#define LORA_RESET_GPIO_Port GPIOB
+#define LORA_DIO1_Pin GPIO_PIN_10
+#define LORA_DIO1_GPIO_Port GPIOB
+#define LORA_DIO1_EXTI_IRQn EXTI15_10_IRQn
 #define SW1_Pin GPIO_PIN_12
 #define SW1_GPIO_Port GPIOB
 #define SW1_EXTI_IRQn EXTI15_10_IRQn
