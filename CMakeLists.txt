@@ -61,6 +61,13 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 
     # Sensor service
     ${CMAKE_CURRENT_SOURCE_DIR}/User/service/sensor_service.c
+
+    # LoRa / LLCC68 driver and application adapter
+    ${CMAKE_CURRENT_SOURCE_DIR}/User/LoRa/llcc68_driver_version.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/User/LoRa/llcc68.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/User/LoRa/llcc68_hal.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/User/LoRa/llcc68_p2p.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/User/LoRa/lora_service.c
     # OLED
     ${CMAKE_CURRENT_SOURCE_DIR}/User/oled/oled.c
     ${CMAKE_CURRENT_SOURCE_DIR}/User/oled/oled_demo.c
@@ -77,6 +84,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/User/bsp
     ${CMAKE_CURRENT_SOURCE_DIR}/User/oled
     ${CMAKE_CURRENT_SOURCE_DIR}/User/service
+    ${CMAKE_CURRENT_SOURCE_DIR}/User/LoRa
 )
 
 # Add project symbols (macros)

@@ -38,6 +38,7 @@ llcc68_hal_context_t llcc68_ctx = {
 volatile static bool tx_done = false;
 volatile static bool rx_done = false;
 volatile static bool rx_timeout = false;
+volatile static bool irq_pending = false;
 volatile uint8_t rx_data[LORA_PAYLOAD_LEN] = {0};
 
 /**
@@ -46,33 +47,47 @@ volatile uint8_t rx_data[LORA_PAYLOAD_LEN] = {0};
  */
 void DIO1_EXTI_Callback(void)
 {
-	llcc68_irq_mask_t irq_status = 0;
-	// 获取并清除中断状态
-	llcc68_get_and_clear_irq_status(&llcc68_ctx, &irq_status);
-	printf("IRQ tatus: %#x\r\n", irq_status);
+    /*
+     * DIO1 runs in EXTI15_10 IRQ context.  Do not access SPI, clear radio
+     * IRQs, or print from here: all of those operations may block and can
+     * starve the UART/ADC/other interrupt paths.  The foreground LoRa task
+     * calls llcc68_process_irq() and performs the SPI transaction instead.
+     */
+    irq_pending = true;
+}
 
-	// 处理TX_DONE中断
-	if (irq_status & LLCC68_IRQ_TX_DONE)
-	{
-		tx_done = 1;
-		printf("IRQ Tx done\r\n");
-	}
+void llcc68_process_irq(void)
+{
+    llcc68_irq_mask_t irq_status = 0;
 
-	// 处理RX_DONE中断
-	if (irq_status & LLCC68_IRQ_RX_DONE)
-	{
-		rx_done = true;
-		printf("IRQ Rx done\r\n");
-	}
-	if (irq_status & LLCC68_IRQ_TIMEOUT)
-	{
-		printf("IRQ Rx timeout\r\n");
-		rx_timeout = true;
-	}
-	if (irq_status & LLCC68_IRQ_CRC_ERROR)
-	{
-		printf("IRQ CRC error\r\n");
-	}
+    if (!irq_pending)
+    {
+        return;
+    }
+
+    irq_pending = false;
+    if (llcc68_get_and_clear_irq_status(&llcc68_ctx, &irq_status) != LLCC68_STATUS_OK)
+    {
+        printf("LLCC68: read IRQ status failed\r\n");
+        return;
+    }
+
+    if ((irq_status & LLCC68_IRQ_TX_DONE) != 0U)
+    {
+        tx_done = true;
+    }
+    if ((irq_status & LLCC68_IRQ_RX_DONE) != 0U)
+    {
+        rx_done = true;
+    }
+    if ((irq_status & LLCC68_IRQ_TIMEOUT) != 0U)
+    {
+        rx_timeout = true;
+    }
+    if ((irq_status & LLCC68_IRQ_CRC_ERROR) != 0U)
+    {
+        printf("LLCC68: RX CRC error\r\n");
+    }
 }
 
 /**
@@ -235,6 +250,11 @@ llcc68_status_t llcc68_init(const void *context)
 llcc68_status_t llcc68_lora_send(const void *context, const uint8_t *data, uint8_t len, uint32_t timeout_in_ms)
 {
 	llcc68_status_t status;
+
+    if (context == NULL || data == NULL || len == 0U || len > LORA_PAYLOAD_LEN)
+    {
+        return LLCC68_STATUS_ERROR;
+    }
 	llcc68_pkt_params_lora_t lora_pkt_params = {
 		.preamble_len_in_symb = LORA_PREAMBLE_LEN, // 前导码长度8个符号
 		.header_type = LLCC68_LORA_PKT_EXPLICIT,   // 显式头
@@ -270,11 +290,6 @@ llcc68_status_t llcc68_lora_send(const void *context, const uint8_t *data, uint8
 	if (status != LLCC68_STATUS_OK)
 		return status;
 
-	if (len > LORA_PAYLOAD_LEN)
-	{
-		printf("Data length is too long!\r\n");
-		return LLCC68_STATUS_ERROR;
-	}
 	// 写入发送数据到TX缓冲区
 	status = llcc68_write_buffer(context, 0, data, len);
 	if (status != LLCC68_STATUS_OK)
@@ -290,6 +305,7 @@ llcc68_status_t llcc68_lora_send(const void *context, const uint8_t *data, uint8
 	uint32_t start = HAL_GetTick();
 	while (!tx_done)
 	{
+        llcc68_process_irq();
 		if (HAL_GetTick() - start > timeout_in_ms)
 		{
 			tx_done = false;
@@ -356,9 +372,10 @@ llcc68_status_t llcc68_lora_receive_data(const void *context, uint8_t *data, uin
 	uint32_t start = HAL_GetTick();
 	while (!rx_done && !rx_timeout)
 	{
-		if (HAL_GetTick() - start > timeout_in_ms + 10)
+        llcc68_process_irq();
+		if (HAL_GetTick() - start > timeout_in_ms + 10U)
 		{
-			tx_done = false;
+			rx_timeout = false;
 			printf("Receive timeout...!\r\n");
 			return status;
 		}
@@ -430,9 +447,7 @@ void llcc68_p2p_demo(void)
 		HAL_Delay(1000);
 	}
 	// 测试数据
-	int16_t tx_data[64] = {0};
-	uint16_t rx_data_len = 0;
-	llcc68_pkt_status_lora_t pkt_status;
+	int16_t tx_data[3] = {0};
 	uint16_t tx_cnt = 0;              // 发送计数：接收端看到 1,2,3... 递增即链路正常
 
 	/* 启动 ADC1 + DMA。

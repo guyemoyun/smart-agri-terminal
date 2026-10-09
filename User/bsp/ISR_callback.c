@@ -12,6 +12,7 @@
 #include "app_main.h"
 #include "debug.h"
 #include "co2.h" // CO2_UART_Callback 声明（缺少会报 #223-D implicit declaration）
+#include "llcc68_p2p.h"
 
 /**
   * @brief  GPIO 外部中断统一回调（重写 HAL 弱符号）：所有 EXTI 中断最终进入此函数
@@ -27,16 +28,25 @@
   */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-        if (GPIO_Pin == SW1_Pin)   // 判断是否是KEY1引脚触发的中断
+    if (GPIO_Pin == LORA_DIO1_Pin)
+    {
+        DIO1_EXTI_Callback();
+        return;
+    }
+
+    if (GPIO_Pin == SW1_Pin)
+    {
+        delay_ms(15);
+        if (HAL_GPIO_ReadPin(SW1_GPIO_Port, SW1_Pin) == GPIO_PIN_RESET)
         {
-            delay_ms(15);  // 消抖按下瞬间的电压
-            if (HAL_GPIO_ReadPin(SW1_GPIO_Port, SW1_Pin) == GPIO_PIN_RESET)
+            HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+            delay_ms(15);
+            while (HAL_GPIO_ReadPin(SW1_GPIO_Port, SW1_Pin) == GPIO_PIN_RESET)
             {
-                    HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin); // 翻转LED
-                    delay_ms(15);// 消抖松开时瞬间的电压
-                    while(HAL_GPIO_ReadPin(SW1_GPIO_Port, SW1_Pin) == GPIO_PIN_RESET); // 等待高电平按键松开 
+                /* Wait for release; legacy button behavior retained. */
             }
         }
+    }
 }
 
 /**

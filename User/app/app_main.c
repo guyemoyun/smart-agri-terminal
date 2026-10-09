@@ -37,6 +37,7 @@
 #include "adc.h" // hadc1/hdma_adc1 与 MX_ADC1_Init 声明（HAL_ADC_Start_DMA 需要 &hadc1）
 #include "oled.h"
 #include "sensor_service.h"
+#include "lora_service.h"
 /**
   * @brief  软件空循环毫秒级延时（72MHz 主频下标定）
   * @note   原理：双层空循环消耗 CPU 周期实现延时。实测精度 1ms 误差 ±0.02ms、
@@ -317,6 +318,7 @@ void app_main(void)
     }
 
     Sensor_ServiceInit();
+    Lora_ServiceInit();
     printf("System ready\r\n");
 
     while (1)
@@ -330,5 +332,6 @@ void app_main(void)
         }
 
         Sensor_ServiceTask(now);
+        Lora_ServiceTask(HAL_GetTick());
     }
 }

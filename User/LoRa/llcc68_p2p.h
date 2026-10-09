@@ -41,6 +41,7 @@ extern llcc68_hal_context_t llcc68_ctx;
 extern volatile uint8_t rx_data[LORA_PAYLOAD_LEN];
 
 void DIO1_EXTI_Callback(void);
+void llcc68_process_irq(void);
 llcc68_status_t llcc68_init(const void *context);
 llcc68_status_t llcc68_lora_send(const void *context, const uint8_t *data, uint8_t len, uint32_t timeout_in_ms);
 llcc68_status_t llcc68_lora_receive_mode(const void *context, uint32_t timeout_in_ms);
