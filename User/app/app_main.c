@@ -37,6 +37,7 @@
 #include "adc.h" // hadc1/hdma_adc1 与 MX_ADC1_Init 声明（HAL_ADC_Start_DMA 需要 &hadc1）
 #include "oled.h"
 #include "sensor_service.h"
+#include "motor_control.h"
 #include "lora_service.h"
 /**
   * @brief  软件空循环毫秒级延时（72MHz 主频下标定）
@@ -318,6 +319,7 @@ void app_main(void)
     }
 
     Sensor_ServiceInit();
+    Motor_Init();
     Lora_ServiceInit();
     printf("System ready\r\n");
 

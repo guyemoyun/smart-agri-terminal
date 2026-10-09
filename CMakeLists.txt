@@ -61,6 +61,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 
     # Sensor service
     ${CMAKE_CURRENT_SOURCE_DIR}/User/service/sensor_service.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/User/service/motor_control.c
 
     # LoRa / LLCC68 driver and application adapter
     ${CMAKE_CURRENT_SOURCE_DIR}/User/LoRa/llcc68_driver_version.c

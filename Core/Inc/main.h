@@ -59,6 +59,8 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 #define LED_Pin GPIO_PIN_13
 #define LED_GPIO_Port GPIOC
+#define RELAY_Pin GPIO_PIN_14
+#define RELAY_GPIO_Port GPIOC
 #define DHT22_Pin GPIO_PIN_15
 #define DHT22_GPIO_Port GPIOC
 #define CO2_UART2_TX_Pin GPIO_PIN_2

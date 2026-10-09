@@ -54,13 +54,16 @@ void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOC, LED_Pin|DHT22_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(RELAY_GPIO_Port, RELAY_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LORA_NSS_GPIO_Port, LORA_NSS_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, LORA_RESET_Pin|LED3_Pin, GPIO_PIN_SET);
 
-  /*Configure GPIO pins : LED_Pin DHT22_Pin */
-  GPIO_InitStruct.Pin = LED_Pin|DHT22_Pin;
+  /*Configure GPIO pins : LED_Pin RELAY_Pin DHT22_Pin */
+  GPIO_InitStruct.Pin = LED_Pin|RELAY_Pin|DHT22_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
