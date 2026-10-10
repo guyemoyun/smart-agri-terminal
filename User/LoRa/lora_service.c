@@ -1,172 +1,96 @@
 #include "lora_service.h"
 #include "llcc68_p2p.h"
-#include "sensor_service.h"
+#include "terminal_telemetry.h"
+#include "button_service.h"
 #include <stdio.h>
-#include <stdbool.h>
+#include <string.h>
 
-#define LORA_SERVICE_INIT_RETRY_MS       2000U
-#define LORA_SERVICE_REPORT_PERIOD_MS    5000U
-#define LORA_SERVICE_TX_TIMEOUT_MS       1500U
-#define LORA_DEVICE_ID                   0x0001U
-#define LORA_FRAME_MAGIC                 0xA5U
-#define LORA_FRAME_VERSION               0x01U
-#define LORA_FRAME_TYPE_SENSOR           0x01U
-#define LORA_SENSOR_PAYLOAD_LENGTH       10U
-#define LORA_FRAME_LENGTH                20U
+#define INIT_RETRY_MS 5000U
+#define REPORT_PERIOD_MS 5000U
+#define TX_TIMEOUT_MS 1500U
+#define NODE_ID 1U
 
-static bool lora_ready;
-static uint32_t next_init_tick;
-static uint32_t next_report_tick;
-static uint16_t frame_sequence;
-static uint32_t tx_success_count;
-static uint32_t tx_error_count;
-
-static uint16_t lora_crc16(const uint8_t *data, uint16_t length)
-{
-    uint16_t crc = 0xFFFFU;
-    uint16_t i;
-
-    for (i = 0U; i < length; ++i)
-    {
-        uint8_t bit;
-        crc ^= data[i];
-        for (bit = 0U; bit < 8U; ++bit)
-        {
-            if ((crc & 0x0001U) != 0U)
-            {
-                crc = (uint16_t)((crc >> 1U) ^ 0xA001U);
-            }
-            else
-            {
-                crc >>= 1U;
-            }
-        }
-    }
-    return crc;
-}
-
-static void put_u16_le(uint8_t *dst, uint16_t value)
-{
-    dst[0] = (uint8_t)(value & 0xFFU);
-    dst[1] = (uint8_t)(value >> 8U);
-}
-
-static uint16_t temperature_to_x10(float value)
-{
-    int32_t scaled = (int32_t)(value * 10.0f + (value >= 0.0f ? 0.5f : -0.5f));
-    return (uint16_t)(int16_t)scaled;
-}
-
-static uint8_t build_sensor_frame(uint8_t *frame)
-{
-    uint8_t valid_mask = 0U;
-    uint16_t crc;
-    uint16_t humidity_x10;
-    uint16_t temperature_x10;
-    const SensorData_t *sensor = (const SensorData_t *)&g_sensor_data;
-
-    if (sensor->light_valid != 0U)
-    {
-        valid_mask |= 0x01U;
-    }
-    if (sensor->soil_valid != 0U)
-    {
-        valid_mask |= 0x02U;
-    }
-    if (sensor->dht22_valid != 0U)
-    {
-        valid_mask |= 0x04U;
-    }
-    if (sensor->co2_valid != 0U)
-    {
-        valid_mask |= 0x08U;
-    }
-
-    temperature_x10 = temperature_to_x10(sensor->temperature);
-    humidity_x10 = (uint16_t)(sensor->humidity * 10.0f + 0.5f);
-
-    frame[0] = LORA_FRAME_MAGIC;
-    frame[1] = LORA_FRAME_VERSION;
-    put_u16_le(&frame[2], LORA_DEVICE_ID);
-    frame[4] = LORA_FRAME_TYPE_SENSOR;
-    put_u16_le(&frame[5], frame_sequence++);
-    frame[7] = LORA_SENSOR_PAYLOAD_LENGTH;
-
-    put_u16_le(&frame[8], temperature_x10);
-    put_u16_le(&frame[10], humidity_x10);
-    put_u16_le(&frame[12], sensor->co2_ppm);
-    put_u16_le(&frame[14], sensor->light_lux);
-    frame[16] = sensor->soil_level;
-    frame[17] = valid_mask;
-
-    crc = lora_crc16(frame, 18U);
-    put_u16_le(&frame[18], crc);
-    return LORA_FRAME_LENGTH;
-}
+static LoraStatus_t state;
+static uint32_t last_init_attempt, last_report;
+static uint16_t sequence;
 
 void Lora_ServiceInit(void)
 {
-    lora_ready = false;
-    next_init_tick = 0U;
-    next_report_tick = 0U;
-    frame_sequence = 0U;
-    tx_success_count = 0U;
-    tx_error_count = 0U;
-    printf("LoRa service: waiting for LLCC68\\r\\n");
+    memset(&state, 0, sizeof(state));
+    sequence = 0U;
+    last_init_attempt = HAL_GetTick() - INIT_RETRY_MS;
+    last_report = HAL_GetTick() - REPORT_PERIOD_MS;
+    printf("LoRa: telemetry v2 service ready, radio not checked\r\n");
+}
+
+void Lora_GetStatus(LoraStatus_t *status)
+{
+    if (status != 0) *status = state;
 }
 
 void Lora_ServiceTask(uint32_t now)
 {
-    uint8_t frame[LORA_FRAME_LENGTH];
-    uint8_t frame_length;
-    llcc68_status_t status;
-
-    /* Foreground side of the DIO1 interrupt handshake. */
-    llcc68_process_irq();
-
-    if (!lora_ready)
+    if (state.ready == 0U)
     {
-        if ((int32_t)(now - next_init_tick) < 0)
+        ControlSnapshot_t control;
+        Control_GetSnapshot(&control);
+        /* 当前初始化含有有界延时，只在执行器关闭且按键释放时尝试。 */
+        if (control.actuator.relay_on || control.actuator.fan_duty_permille || control.actuator.buzzer_on || Button_IsHeld() ||
+            (now - last_init_attempt) < INIT_RETRY_MS) return;
+        last_init_attempt = now;
+        if (llcc68_init(&llcc68_ctx) != LLCC68_STATUS_OK)
         {
+            ++state.init_error_count;
+            printf("LoRa: init failed (%lu)\r\n", (unsigned long)state.init_error_count);
             return;
         }
-
-        printf("LoRa: initializing LLCC68\\r\\n");
-        status = llcc68_init(&llcc68_ctx);
-        if (status != LLCC68_STATUS_OK)
+        /* SPI 无响应时读取全零也可能返回 HAL_OK，检查实际芯片待机模式。 */
+        llcc68_chip_status_t chip;
+        if (llcc68_get_status(&llcc68_ctx, &chip) != LLCC68_STATUS_OK ||
+            (chip.chip_mode != LLCC68_CHIP_MODE_STBY_XOSC && chip.chip_mode != LLCC68_CHIP_MODE_STBY_RC))
         {
-            printf("LoRa: init failed (%d), retry in %u ms\\r\\n",
-                   (int)status, (unsigned int)LORA_SERVICE_INIT_RETRY_MS);
-            next_init_tick = HAL_GetTick() + LORA_SERVICE_INIT_RETRY_MS;
+            ++state.init_error_count;
             return;
         }
-
-        lora_ready = true;
-        next_report_tick = HAL_GetTick();
-        printf("LoRa: ready, SF9/BW125/470.5MHz\\r\\n");
+        state.ready = 1U;
+        last_report = HAL_GetTick() - REPORT_PERIOD_MS;
         return;
     }
 
-    if ((int32_t)(now - next_report_tick) < 0)
+    if (state.tx_busy != 0U)
     {
+        const llcc68_tx_result_t result = llcc68_lora_tx_poll(&llcc68_ctx, now);
+        if (result == LLCC68_TX_PENDING) return;
+        state.tx_busy = 0U;
+        last_report = HAL_GetTick();
+        if (result == LLCC68_TX_DONE)
+        {
+            ++state.tx_done_count; /* 仅表示芯片发送结束，不代表网关收到。 */
+            printf("LoRa: TX_DONE seq=%u\r\n", (unsigned int)state.last_sequence);
+        }
+        else
+        {
+            ++state.tx_error_count;
+            state.ready = 0U;
+            last_init_attempt = HAL_GetTick();
+        }
         return;
     }
-
-    frame_length = build_sensor_frame(frame);
-    status = llcc68_lora_send(&llcc68_ctx, frame, frame_length, LORA_SERVICE_TX_TIMEOUT_MS);
-    if (status == LLCC68_STATUS_OK)
+    if ((now - last_report) < REPORT_PERIOD_MS) return;
+    uint8_t frame[TELEMETRY_FRAME_SIZE];
+    SensorData_t sensor;
+    ControlSnapshot_t control;
+    Sensor_GetSnapshot(&sensor);
+    Control_GetSnapshot(&control);
+    const size_t length = Terminal_EncodeTelemetry(frame, sizeof(frame), NODE_ID, sequence, &sensor, &control, now);
+    state.last_sequence = sequence++;
+    if (length != TELEMETRY_FRAME_SIZE ||
+        llcc68_lora_send_start(&llcc68_ctx, frame, (uint8_t)length, TX_TIMEOUT_MS) != LLCC68_STATUS_OK)
     {
-        ++tx_success_count;
-        printf("LoRa: sensor frame sent, seq=%u ok=%lu\\r\\n",
-               (unsigned int)(uint16_t)(frame_sequence - 1U),
-               (unsigned long)tx_success_count);
+        ++state.tx_error_count;
+        state.ready = 0U;
+        last_init_attempt = HAL_GetTick();
+        return;
     }
-    else
-    {
-        ++tx_error_count;
-        printf("LoRa: sensor frame failed, err=%lu\\r\\n",
-               (unsigned long)tx_error_count);
-    }
-
-    next_report_tick = HAL_GetTick() + LORA_SERVICE_REPORT_PERIOD_MS;
+    state.tx_busy = 1U;
 }

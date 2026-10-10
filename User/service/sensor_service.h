@@ -1,7 +1,7 @@
 #ifndef SENSOR_SERVICE_H
 #define SENSOR_SERVICE_H
 
-#include "stm32f1xx_hal.h"
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,6 +36,7 @@ extern volatile SensorData_t g_sensor_data;
 void Sensor_ServiceInit(void);
 void Sensor_ServiceTask(uint32_t now);
 void Sensor_ServiceReport(void);
+void Sensor_GetSnapshot(SensorData_t *snapshot);
 void Sensor_ServiceDisplay(void);
 
 #ifdef __cplusplus

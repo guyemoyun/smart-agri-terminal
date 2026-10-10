@@ -62,6 +62,15 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Sensor service
     ${CMAKE_CURRENT_SOURCE_DIR}/User/service/sensor_service.c
     ${CMAKE_CURRENT_SOURCE_DIR}/User/service/motor_control.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/User/service/control_policy.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/User/service/actuator_service.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/User/service/control_service.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/User/service/button_state.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/User/service/button_service.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/User/service/terminal_view.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/User/service/terminal_ui.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/User/bsp/co2_parser.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/User/LoRa/terminal_telemetry.c
 
     # LoRa / LLCC68 driver and application adapter
     ${CMAKE_CURRENT_SOURCE_DIR}/User/LoRa/llcc68_driver_version.c

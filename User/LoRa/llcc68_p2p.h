@@ -42,6 +42,10 @@ extern volatile uint8_t rx_data[LORA_PAYLOAD_LEN];
 
 void DIO1_EXTI_Callback(void);
 void llcc68_process_irq(void);
+typedef enum { LLCC68_TX_PENDING = 0, LLCC68_TX_DONE, LLCC68_TX_FAILED } llcc68_tx_result_t;
+llcc68_status_t llcc68_lora_send_start(const void *context, const uint8_t *data,
+                                     uint8_t length, uint32_t timeout_ms);
+llcc68_tx_result_t llcc68_lora_tx_poll(const void *context, uint32_t now);
 llcc68_status_t llcc68_init(const void *context);
 llcc68_status_t llcc68_lora_send(const void *context, const uint8_t *data, uint8_t len, uint32_t timeout_in_ms);
 llcc68_status_t llcc68_lora_receive_mode(const void *context, uint32_t timeout_in_ms);

@@ -1,7 +1,7 @@
 /**
   ******************************************************************************
   * @file    app_main.c
-  * @brief   应用主逻辑：CO2/DHT22 传感器采集 + 蜂鸣器 PWM 温度报警 + 串口调试
+  * @brief   应用主逻辑：环境采集、本地安全控制、OLED 页面及 LoRa 遥测
   * @note    调用关系：main() 完成 HAL/时钟/外设初始化后调用 app_main()，
   *          由它接管主循环（CubeMX 工程的用户业务统一从这里写，不写进 main.c）。
   *
@@ -9,7 +9,7 @@
   *          1. delay_ms()  —— 软件空循环毫秒延时（按键消抖等粗延时场合）
   *          2. delay_us()  —— DWT 微秒精确延时（DHT22 单总线时序依赖它）
   *          3. __io_putchar() —— GCC/newlib printf 重定向到 USART1（PA9 → CH340 → 电脑）
-  *          4. app_main()  —— 主循环：1s 任务(CO2+心跳灯) / 2s 任务(DHT22+温度控响度)
+  *          4. app_main()  —— 主循环：按键/UI、采集、控制、LoRa 前台任务
   *
   *          ⚠ 工程约定：printf 字符串只允许 ASCII（ARMCC 按 GBK 解析源码，
   *          UTF-8 中文字符串会触发 #870-D 警告且串口输出乱码）；注释可用中文。
@@ -37,7 +37,8 @@
 #include "adc.h" // hadc1/hdma_adc1 与 MX_ADC1_Init 声明（HAL_ADC_Start_DMA 需要 &hadc1）
 #include "oled.h"
 #include "sensor_service.h"
-#include "motor_control.h"
+#include "control_service.h"
+#include "terminal_ui.h"
 #include "lora_service.h"
 /**
   * @brief  软件空循环毫秒级延时（72MHz 主频下标定）
@@ -131,209 +132,45 @@ int __io_putchar(int ch)
 
 
 
-/**
-  * @brief  应用主函数：接管 main() 的 while(1)，承载全部业务逻辑（本函数不返回）
-  * @note   主循环采用【非阻塞时间片轮询】结构（裸机开发最常用的多任务模式）：
-  *           - HAL_GetTick() 提供毫秒时基，每个任务有自己的节拍变量 tick_x；
-  *           - "当前时刻 - 上次执行时刻 >= 周期" 成立才执行该任务，执行完刷新节拍；
-  *           - 各任务按各自周期独立运行，互不干扰。
-  *         任务划分：
-  *           任务1（每 1s）：PC13 心跳灯翻转 + 读取 CO2 浓度并打印；
-  *           任务2（每 2s）：读取 DHT22 温湿度 → 温度映射为蜂鸣器 PWM 占空比（越热越响）。
-  *         ⚠ 风险：CO2_get_data() 忙等最长 1000ms、DHT22_ReadData() 忙等约 4~5ms，
-  *         会推迟其他任务的节拍（本工程周期宽松可接受）；任务继续增多时应改为
-  *         状态机/事件驱动架构，避免主循环被阻塞调用拖垮。
-  * @retval 无（死循环，永不返回）
-  */
-//void app_main(void)
-//{
-//    uint32_t tick_1S = HAL_GetTick();   /* 任务1节拍：上次执行的毫秒时基（超周期即触发） */
-//    uint32_t tick_2S = HAL_GetTick();   /* 任务2节拍 */
-//    uint16_t co2_value = 0;             /* CO2 浓度（ppm），CO2_get_data 的出参 */
-//    float temp, humi;                   /* DHT22 出参：温度(℃)/湿度(%RH)。⚠ 未初始化，仅读取成功(ret==0)后才允许使用 */
-//    uint8_t ret = 0;                    /* 各传感器公共返回值：0=成功，非0=各自错误码 */
-
-//    /* ---------- 外设/模块初始化（顺序无强依赖，失败会进 Error_Handler 死循环） ---------- */
-//    Debug_UART_Receive_Start(); // 启动 USART1 中断变长接收（电脑→板子，空闲帧判定）
-//    CO2_UART_Receive_Start();   // 启动 USART2 中断接收（CO2 模块→板子，6 字节定长帧）
-//    DHT22_Init();               // 初始化 DHT22（引脚已由 CubeMX 配好，保留扩展点）
-//    HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4); // 启动 TIM4_CH4 PWM（PB9 蜂鸣器，20kHz 载波；Pulse=0 上电静音）
-
-//    // HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);         // 启动定时器1的PWM输出
-//    // __HAL_TIM_SetCompare(&htim1, TIM_CHANNEL_1, 300); // 设置定时器1，CCR1为300，这时PWM占空比30%
-
-//    while (1) // 主循环：所有任务在这里轮询执行，任何任务都不允许长期霸占 CPU
-//    {
-//        /* ========== 任务1：每 1s 周期（心跳灯 + CO2 采集打印） ========== */
-//        if (HAL_GetTick() - tick_1S >= 1000)
-//        {
-//            tick_1S = HAL_GetTick(); // 先刷新节拍再干活：保证周期稳定不受任务耗时影响
-//            HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin); // PC13 心跳灯：1Hz 翻转，灯闪 = 主循环还活着（调试巡检依据）
-//            ret = CO2_get_data(&co2_value, 1000); // 阻塞最长 1s 等 CO2 帧（协议/校验细节见 CO2.c）
-//            if (ret)
-//            {
-//                printf("CO2 sensor error, ret = %d\n", ret); // 错误码含义见 CO2_get_data 注释
-//            }
-//            else
-//            {
-//                printf("CO2: %hu ppm\n", co2_value); // %hu 对应 uint16_t；%hhu 只取低 8 位会算错值
-//            }
-//        }
-
-//        /* ========== 任务2：每 2s 周期（DHT22 温湿度 + 温度→蜂鸣器响度报警） ========== */
-//        if (HAL_GetTick() - tick_2S >= 2000) // 2s 周期同时满足 DHT22 两次读取需 ≥2s 恢复时间的规格约束
-//        {
-//            tick_2S = HAL_GetTick();
-//            // 读取温湿度数据（阻塞约 4~5ms，单总线时序见 dht22.c）
-//            ret = DHT22_ReadData(&temp, &humi);
-//            if (!ret) // 读取成功才允许使用 temp/humi（失败时二者为无效旧值）
-//            {
-//                /* 温度→响度映射（占空比 = CCR/(ARR+1) = CCR/3600，PWM1 模式占空比越大越响）：
-//                 *   T <= 25℃          → CCR=0，静音（温度正常）
-//                 *   25℃ < T < 35℃     → 线性：每升高 1℃，占空比 +10%（温度越高叫得越凶）
-//                 *   T >= 35℃          → CCR=3600（100%），满功率持续报警
-//                 * 调曲线只改三个数：静音阈值 25.0f / 报警阈值 35.0f / 斜率 360.0f(=3600÷10℃)
-//                 */
-//                uint16_t beep_ccr = 0;
-//                if (temp >= 35.0f)
-//                {
-//                    beep_ccr = 3600;
-//                }
-//                else if (temp > 25.0f)
-//                {
-//                    beep_ccr = (uint16_t)((temp - 25.0f) * 360.0f);
-//                }
-//                __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_4, beep_ccr); // 运行中改占空比只需写 CCR，无需重新 Init
-//                printf("Temp: %.1f C, Humi: %.1f %%RH, Beep: %d %%\n",
-//                       temp, humi, (int)((beep_ccr * 100UL) / 3600)); // 同步打印响度百分比便于调试
-//            }
-//            else
-//            {
-//                __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_4, 0); // 读取失败先静音；若想要"传感器故障报警"可改为 3600
-//                printf("DHT22 read fail, ret = %d\n", ret); // ret 含义见 dht22.h：1/2=超时 3=校验失败
-//            }
-//        }
-//    }
-//}
-
-// 替代main函数中的while循环
-// void app_main(void)
-// {
-	/* 上电初始电平设置（对照原理图确定极性）：
-   * PC13 拉低 —— 核心板板载 LED（低电平点亮）
-   * PB15 拉低 —— LED3（低电平点亮）
-   * PA8  拉低 —— LED2（低电平点亮）
-   * PB9  拉低 —— 蜂鸣器（高电平响，初始保持静音，等待 SW2 翻转）
-   */
-//	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
-//	HAL_GPIO_WritePin(GPIOB, LED3_Pin, GPIO_PIN_RESET);
-//  HAL_GPIO_WritePin(GPIOA, LED2_Pin, GPIO_PIN_RESET);
-//	HAL_GPIO_WritePin(GPIOB, BEEP_Pin, GPIO_PIN_RESET);
-	
-//	LED_PWM();
-//	debug_test1();  // 测试串口1轮询接收
-//	debug_test2();
-//	debug_test3();
-
-	// printf("Hello world!\r\n"); // printf 已通过 fputc 重定向到串口1，上电打印一次
-	// uint32_t tick_1S = HAL_GetTick();
-    // uint16_t co2_value = 0; // CO2浓度值
-    // uint8_t ret = 0;
-	// Debug_UART_Receive_Start(); // 启动调试串口接收
-    // CO2_UART_Receive_Start();   // 启动CO2传感器串口接收
-
-	// while (1)
-	// {
-	// // 	HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
-
-	// // 	// 串口命令控制 LED3：debug_rx_len>0 表示收到一帧，
-	// // 	// 有效数据为 debug_buffer[0] ~ debug_buffer[debug_rx_len-1]。
-	// // 	// 电脑串口助手发送 '1' → LED3 点亮；发送 '0' → LED3 熄灭。
-	// // 	// 逐字节检查，兼容发送 "1\r\n"、"01 1" 这类带结束符/多命令的数据。
-	// // 	if (debug_rx_len > 0)
-	// // 	{
-	// // 		for (i = 0; i < debug_rx_len; i++)
-	// // 		{
-	// // 			if (debug_buffer[i] == '1')      // 字符 '1'（ASCII 0x31）
-	// // 			{
-	// // 				HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_RESET);
-    // //                 printf("LED3 on\r\n"); // LED3 低电平点亮 → 开
-	// // 			}
-	// // 			else if (debug_buffer[i] == '0') // 字符 '0'（ASCII 0x30）
-	// // 			{
-	// // 				HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
-    // //                 printf("LED3 off\r\n"); // LED3 熄灭 → 关闭
-	// // 			}
-	// // 		}
-	// // 		debug_rx_len = 0; // 处理完清标志，等待下一帧
-			
-
-	// // 	}
-
-	// // 	// printf("running %d s\r\n", print_cnt++); // 周期打印，验证 printf 格式化输出
-    // // HAL_Delay(1000);
-	//     if (HAL_GetTick() - tick_1S >= 1000)
-    //     {
-    //         tick_1S = HAL_GetTick();
-    //         HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
-    //         ret = CO2_get_data(&co2_value, 1000);
-    //         if (ret)
-    //         {
-    //             printf("CO2 sensor error, ret = %d\n", ret); // 串口输出用 ASCII：ARMCC 按 GBK 解析字符串，UTF-8 中文会触发 #870-D
-    //         }
-    //         else
-    //         {
-    //             printf("CO2: %hu ppm\n", co2_value);
-    //         }
-    //     }
-	// }
-// }
-//#include "app_main.h"
-//#include "main.h"
-//#include "tim.h" // 包含STM32CubeMX生成的TIM头文件
-//#include "debug.h"
-//#include "co2.h"
-//#include "dht22.h"
-//#include "light.h"
-
 volatile uint16_t adc_values[2];
 
 void app_main(void)
 {
     uint32_t tick_heartbeat = HAL_GetTick();
 
+    /* 执行器先初始化为关闭，默认 MANUAL，不会自动启动水泵或风扇。 */
+    Sensor_ServiceInit();
+    Control_ServiceInit(HAL_GetTick());
+    Terminal_UIInit(HAL_GetTick());
+    Lora_ServiceInit();
     OLED_Init();
     Debug_UART_Receive_Start();
     CO2_UART_Receive_Start();
     DHT22_Init();
 
-    /* STM32F1 ADC 在首次转换前执行校准，降低偏置误差。 */
-    if (HAL_ADCEx_Calibration_Start(&hadc1) != HAL_OK)
+    if (HAL_ADCEx_Calibration_Start(&hadc1) != HAL_OK ||
+        HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc_values, 2U) != HAL_OK)
     {
+        Actuator_AllSafeOff();
         Error_Handler();
     }
-
-    if (HAL_ADC_Start_DMA(&hadc1, (uint32_t *)adc_values, 2) != HAL_OK)
-    {
-        Error_Handler();
-    }
-
-    Sensor_ServiceInit();
-    Motor_Init();
-    Lora_ServiceInit();
-    printf("System ready\r\n");
+    printf("Terminal ready: MANUAL, outputs off, telemetry v2\r\n");
 
     while (1)
     {
         uint32_t now = HAL_GetTick();
-
         if ((now - tick_heartbeat) >= 500U)
         {
             tick_heartbeat = now;
             HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
         }
-
-        Sensor_ServiceTask(now);
+        /* 控制与按键前后检查，采集/射频操作之间也能执行超时保护。 */
+        Terminal_UITask(now);
+        Control_ServiceTask(HAL_GetTick());
+        Sensor_ServiceTask(HAL_GetTick());
+        Control_ServiceTask(HAL_GetTick());
+        Terminal_UITask(HAL_GetTick());
         Lora_ServiceTask(HAL_GetTick());
+        Control_ServiceTask(HAL_GetTick());
     }
 }
