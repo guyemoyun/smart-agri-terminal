@@ -18,5 +18,6 @@ ControlResult_t Control_SetPump(uint8_t on, uint32_t now);
 ControlResult_t Control_SetFan(uint8_t level, uint32_t now);
 void Control_EmergencyStop(uint32_t now);
 void Control_ToggleMute(uint32_t now);
+void Control_SetMuted(uint8_t muted,uint32_t now);
 ControlResult_t Control_SetConfig(const ControlConfig_t *config, uint32_t now);
 #endif

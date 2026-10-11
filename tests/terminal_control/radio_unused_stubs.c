@@ -101,50 +101,14 @@ llcc68_status_t llcc68_set_buffer_base_address( const void* context, const uint8
     Radio_Unexpected("llcc68_set_buffer_base_address"); return LLCC68_STATUS_ERROR;
 }
 
-llcc68_status_t llcc68_cfg_rx_boosted( const void* context, const bool state )
-{
-    (void)context; (void)state;
-    Radio_Unexpected("llcc68_cfg_rx_boosted"); return LLCC68_STATUS_ERROR;
-}
-
 llcc68_status_t llcc68_set_fs( const void* context )
 {
     (void)context;
     Radio_Unexpected("llcc68_set_fs"); return LLCC68_STATUS_ERROR;
 }
 
-llcc68_status_t llcc68_set_rx_with_timeout_in_rtc_step( const void* context, const uint32_t timeout_in_rtc_step )
-{
-    (void)context; (void)timeout_in_rtc_step;
-    Radio_Unexpected("llcc68_set_rx_with_timeout_in_rtc_step"); return LLCC68_STATUS_ERROR;
-}
-
 llcc68_status_t llcc68_set_rx( const void* context, const uint32_t timeout_in_ms )
 {
     (void)context; (void)timeout_in_ms;
     Radio_Unexpected("llcc68_set_rx"); return LLCC68_STATUS_ERROR;
-}
-
-llcc68_status_t llcc68_get_rx_buffer_status( const void* context, llcc68_rx_buffer_status_t* rx_buffer_status )
-{
-    (void)context; (void)rx_buffer_status;
-    Radio_Unexpected("llcc68_get_rx_buffer_status"); return LLCC68_STATUS_ERROR;
-}
-
-llcc68_status_t llcc68_get_lora_pkt_status( const void* context, llcc68_pkt_status_lora_t* pkt_status )
-{
-    (void)context; (void)pkt_status;
-    Radio_Unexpected("llcc68_get_lora_pkt_status"); return LLCC68_STATUS_ERROR;
-}
-
-llcc68_status_t llcc68_read_buffer( const void* context, const uint8_t offset, uint8_t* buffer, const uint8_t size )
-{
-    (void)context; (void)offset; (void)buffer; (void)size;
-    Radio_Unexpected("llcc68_read_buffer"); return LLCC68_STATUS_ERROR;
-}
-
-llcc68_status_t llcc68_handle_rx_done( const void* context )
-{
-    (void)context;
-    Radio_Unexpected("llcc68_handle_rx_done"); return LLCC68_STATUS_ERROR;
 }

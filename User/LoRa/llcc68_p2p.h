@@ -4,9 +4,9 @@
  * @brief lora点对点通信测试示例
  * @version 0.1
  * @date 2026-02-01
- * 
+ *
  * @copyright Copyright (c) 2026
- * 
+ *
  */
 #ifndef LLCC68_P2P_H
 #define LLCC68_P2P_H
@@ -46,11 +46,16 @@ typedef enum { LLCC68_TX_PENDING = 0, LLCC68_TX_DONE, LLCC68_TX_FAILED } llcc68_
 llcc68_status_t llcc68_lora_send_start(const void *context, const uint8_t *data,
                                      uint8_t length, uint32_t timeout_ms);
 llcc68_tx_result_t llcc68_lora_tx_poll(const void *context, uint32_t now);
+typedef enum { LLCC68_RX_PENDING=0,LLCC68_RX_PACKET,LLCC68_RX_DROPPED,LLCC68_RX_FAILED } llcc68_rx_result_t;
+llcc68_status_t llcc68_lora_rx_start(const void *context);
+llcc68_rx_result_t llcc68_lora_rx_poll(const void *context,uint8_t *data,uint16_t capacity,
+                                     uint8_t *length,llcc68_pkt_status_lora_t *packet_status);
+
 llcc68_status_t llcc68_init(const void *context);
 llcc68_status_t llcc68_lora_send(const void *context, const uint8_t *data, uint8_t len, uint32_t timeout_in_ms);
 llcc68_status_t llcc68_lora_receive_mode(const void *context, uint32_t timeout_in_ms);
 llcc68_status_t llcc68_lora_receive_data(const void *context, uint8_t *data, uint16_t *len,
-									llcc68_pkt_status_lora_t *pkt_status, uint32_t timeout_in_ms);					
+									llcc68_pkt_status_lora_t *pkt_status, uint32_t timeout_in_ms);
 void llcc68_p2p_demo(void);
 
 #ifdef __cplusplus

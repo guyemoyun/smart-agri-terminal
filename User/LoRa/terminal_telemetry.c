@@ -1,4 +1,5 @@
 #include "terminal_telemetry.h"
+#include "lora_protocol.h"
 #include <math.h>
 
 static void Put16(uint8_t *out, uint16_t value)
@@ -8,14 +9,7 @@ static void Put16(uint8_t *out, uint16_t value)
 
 uint16_t Terminal_Crc16(const uint8_t *data, size_t length)
 {
-    uint16_t crc = 0xFFFFU;
-    for (size_t i = 0U; i < length; ++i)
-    {
-        crc ^= data[i];
-        for (uint8_t bit = 0U; bit < 8U; ++bit)
-            crc = (uint16_t)((crc >> 1U) ^ ((crc & 1U) != 0U ? 0xA001U : 0U));
-    }
-    return crc;
+    return Lora_Crc16(data, length);
 }
 
 size_t Terminal_EncodeTelemetry(uint8_t *out, size_t capacity, uint16_t node,

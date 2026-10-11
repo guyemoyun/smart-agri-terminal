@@ -71,6 +71,11 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/User/service/terminal_ui.c
     ${CMAKE_CURRENT_SOURCE_DIR}/User/bsp/co2_parser.c
     ${CMAKE_CURRENT_SOURCE_DIR}/User/LoRa/terminal_telemetry.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/User/LoRa/lora_protocol.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/User/LoRa/lora_reliable.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/User/LoRa/terminal_commands.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/User/LoRa/terminal_command_control.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/User/LoRa/gateway_command.c
 
     # LoRa / LLCC68 driver and application adapter
     ${CMAKE_CURRENT_SOURCE_DIR}/User/LoRa/llcc68_driver_version.c

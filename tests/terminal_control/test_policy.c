@@ -255,7 +255,7 @@ static void Views(void)
         if(page==0)CHECK(strstr(rows.row[0],"-0.1")!=0 && strstr(rows.row[0],"100.0")!=0);
         if(page==1)CHECK(strstr(rows.row[2],"100%")!=0);
         if(page==2)CHECK(strstr(rows.row[1],"Out:1")!=0);
-        if(page==3)CHECK(strcmp(rows.row[3],"Init:4294967295")==0);
+        if(page==3)CHECK(strcmp(rows.row[3],"Cmd:0")==0);
     }
     TerminalView_Format(0,&sensor,&control,&link,9000,&rows);
     CHECK(strstr(rows.row[0],"--.-")!=0 && strstr(rows.row[1],"--")!=0);

@@ -97,10 +97,15 @@ void Control_EmergencyStop(uint32_t now)
     Control_ServiceTask(now);
 }
 
+void Control_SetMuted(uint8_t muted,uint32_t now)
+{
+    ControlPolicy_SetMuted(&state, muted);
+    Control_ServiceTask(now);
+}
+
 void Control_ToggleMute(uint32_t now)
 {
-    ControlPolicy_SetMuted(&state, (uint8_t)(state.muted == 0U));
-    Control_ServiceTask(now);
+    Control_SetMuted((uint8_t)(state.muted == 0U), now);
 }
 
 ControlResult_t Control_SetConfig(const ControlConfig_t *new_config, uint32_t now)

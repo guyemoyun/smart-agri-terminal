@@ -1,12 +1,12 @@
 /**
- * @file llcc68_p2p.c 
+ * @file llcc68_p2p.c
  * @author Jaychen (719095404@qq.com)
  * @brief lora点对点通信测试示例
  * @version 0.1
  * @date 2026-02-01
- * 
+ *
  * @copyright Copyright (c) 2026
- * 
+ *
  */
 #include "llcc68_p2p.h"
 #include "llcc68.h"
@@ -41,6 +41,7 @@ static volatile bool rx_timeout = false;
 static volatile bool irq_pending = false;
 volatile uint8_t rx_data[LORA_PAYLOAD_LEN] = {0};
 static bool async_tx_busy;
+static bool async_rx_active,rx_crc_error,rx_header_error;
 static bool irq_read_failed;
 static uint32_t async_tx_tick, async_tx_timeout;
 
@@ -84,10 +85,8 @@ void llcc68_process_irq(void)
     {
         rx_timeout = true;
     }
-    if ((irq_status & LLCC68_IRQ_CRC_ERROR) != 0U)
-    {
-        printf("LLCC68: RX CRC error\r\n");
-    }
+    if ((irq_status & LLCC68_IRQ_CRC_ERROR) != 0U) rx_crc_error = true;
+    if ((irq_status & LLCC68_IRQ_HEADER_ERROR) != 0U) rx_header_error = true;
 }
 
 /**
@@ -100,6 +99,8 @@ llcc68_status_t llcc68_init(const void *context)
 {
 	llcc68_status_t status;
     async_tx_busy = false;
+    async_rx_active = false;
+    rx_crc_error = rx_header_error = false;
     irq_read_failed = false;
     irq_pending = false;
     tx_done = rx_done = rx_timeout = false;
@@ -224,8 +225,8 @@ llcc68_status_t llcc68_init(const void *context)
 
 	// 配置DIO中断映射：DIO1映射TX_DONE和RX_DONE
 	status = llcc68_set_dio_irq_params(context,
-									   LLCC68_IRQ_TX_DONE | LLCC68_IRQ_RX_DONE | LLCC68_IRQ_TIMEOUT, // 使能系统中断
-									   LLCC68_IRQ_TX_DONE | LLCC68_IRQ_RX_DONE | LLCC68_IRQ_TIMEOUT, // DIO1映射TX/RX完成
+									   LLCC68_IRQ_TX_DONE | LLCC68_IRQ_RX_DONE | LLCC68_IRQ_TIMEOUT | LLCC68_IRQ_CRC_ERROR | LLCC68_IRQ_HEADER_ERROR, // 使能系统中断
+									   LLCC68_IRQ_TX_DONE | LLCC68_IRQ_RX_DONE | LLCC68_IRQ_TIMEOUT | LLCC68_IRQ_CRC_ERROR | LLCC68_IRQ_HEADER_ERROR, // DIO1映射TX/RX完成
 									   LLCC68_IRQ_NONE,												 // DIO2无映射
 									   LLCC68_IRQ_NONE);											 // DIO3无映射
 	if (status != LLCC68_STATUS_OK)
@@ -260,8 +261,11 @@ llcc68_status_t llcc68_lora_send_start(const void *context, const uint8_t *data,
         return LLCC68_STATUS_ERROR;
     status = llcc68_set_standby(context, LLCC68_STANDBY_CFG_RC);
     if (status != LLCC68_STATUS_OK) return status;
+    async_rx_active = false;
     status = llcc68_clear_irq_status(context, LLCC68_IRQ_ALL);
     if (status != LLCC68_STATUS_OK) return status;
+    rx_done = false;
+    rx_crc_error = rx_header_error = false;
     tx_done = false;
     rx_timeout = false;
     irq_pending = false;
@@ -310,6 +314,54 @@ llcc68_status_t llcc68_lora_send(const void *context, const uint8_t *data, uint8
         if (result == LLCC68_TX_FAILED) return LLCC68_STATUS_ERROR;
         HAL_Delay(1U);
     }
+}
+
+llcc68_status_t llcc68_lora_rx_start(const void *context)
+{
+    if (context != &llcc68_ctx || async_tx_busy) return LLCC68_STATUS_ERROR;
+    async_rx_active = false;
+    llcc68_status_t status = llcc68_set_standby(context, LLCC68_STANDBY_CFG_RC);
+    if (status != LLCC68_STATUS_OK) return status;
+    status = llcc68_clear_irq_status(context, LLCC68_IRQ_ALL);
+    if (status != LLCC68_STATUS_OK) return status;
+    rx_done = rx_timeout = false;
+    rx_crc_error = rx_header_error = irq_read_failed = irq_pending = false;
+    const llcc68_pkt_params_lora_t packet = {
+        .preamble_len_in_symb=LORA_PREAMBLE_LEN,.header_type=LLCC68_LORA_PKT_EXPLICIT,
+        .pld_len_in_bytes=LORA_PAYLOAD_LEN,.crc_is_on=true,.invert_iq_is_on=false
+    };
+    status = llcc68_set_lora_pkt_params(context, &packet);
+    if (status != LLCC68_STATUS_OK) return status;
+    status = llcc68_cfg_rx_boosted(context, true);
+    if (status != LLCC68_STATUS_OK) return status;
+    status = llcc68_set_rx_with_timeout_in_rtc_step(context, LLCC68_RX_CONTINUOUS);
+    if (status == LLCC68_STATUS_OK) async_rx_active = true;
+    return status;
+}
+
+llcc68_rx_result_t llcc68_lora_rx_poll(const void *context,uint8_t *data,uint16_t capacity,
+                                     uint8_t *length,llcc68_pkt_status_lora_t *packet_status)
+{
+    if (context != &llcc68_ctx || data == NULL || length == NULL || packet_status == NULL || capacity == 0U)
+        return LLCC68_RX_FAILED;
+    *length = 0U;
+    if (!async_rx_active || async_tx_busy) return LLCC68_RX_FAILED;
+    llcc68_process_irq();
+    if (!rx_done && !rx_timeout && !rx_crc_error && !rx_header_error && !irq_read_failed)
+        return LLCC68_RX_PENDING;
+    async_rx_active = false;
+    /* 先停止 RX，避免读取状态和 FIFO 时下一帧覆盖尚未处理的数据。 */
+    if (llcc68_set_standby(context, LLCC68_STANDBY_CFG_RC) != LLCC68_STATUS_OK || irq_read_failed)
+        return LLCC68_RX_FAILED;
+    if (rx_crc_error || rx_header_error || !rx_done) return LLCC68_RX_DROPPED;
+    llcc68_rx_buffer_status_t buffer;
+    if (llcc68_get_rx_buffer_status(context, &buffer) != LLCC68_STATUS_OK) return LLCC68_RX_FAILED;
+    if (buffer.pld_len_in_bytes == 0U || buffer.pld_len_in_bytes > capacity) return LLCC68_RX_DROPPED;
+    if (llcc68_get_lora_pkt_status(context, packet_status) != LLCC68_STATUS_OK ||
+        llcc68_read_buffer(context, buffer.buffer_start_pointer, data, buffer.pld_len_in_bytes) != LLCC68_STATUS_OK ||
+        llcc68_handle_rx_done(context) != LLCC68_STATUS_OK) return LLCC68_RX_FAILED;
+    *length = buffer.pld_len_in_bytes;
+    return LLCC68_RX_PACKET;
 }
 
 llcc68_status_t llcc68_lora_receive_mode(const void *context, uint32_t timeout_in_ms)

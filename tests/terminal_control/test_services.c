@@ -3,6 +3,7 @@
 #include "terminal_view.h"
 #include "button_service.h"
 #include "motor_control.h"
+#include "terminal_commands.h"
 #include "tim.h"
 #include "oled.h"
 #include <stdio.h>
@@ -92,6 +93,29 @@ int main(void)
     Control_GetSnapshot(&state);
     CHECK(state.policy.mode==CONTROL_MODE_SAFE && !state.actuator.relay_on &&
           (state.policy.alarm_mask&ALARM_PUMP_TIMEOUT));
+    TerminalCommands_t remote;
+    TerminalCommands_Init(&remote,1,0,0x12345678U);
+    LoraFrame_t command={.kind=LORA_KIND_COMMAND,.flags=LORA_FLAG_RESULT,.source=0,.target=1,
+        .sequence=1,.session=0x12345678U,.transaction=1,.payload_length=LORA_COMMAND_SIZE},response;
+    command.payload[0]=LORA_COMMAND_MODE;command.payload[1]=CONTROL_MODE_MANUAL;
+    Lora_Write32(&command.payload[2],tick+10000U);
+    CHECK(TerminalCommands_Process(&remote,&command,TerminalCommands_ControlExecutor(),tick,&response)==TERMINAL_COMMAND_NEW);
+    CHECK(response.payload[2]==LORA_RESULT_SAFETY_LOCK);
+    Control_GetSnapshot(&state);CHECK(state.policy.mode==CONTROL_MODE_SAFE);
+    CHECK(Control_SetMode(CONTROL_MODE_MANUAL,tick)==CONTROL_OK); /* 本地明确解锁。 */
+    command.transaction=2;command.sequence=2;command.payload[0]=LORA_COMMAND_FAN;command.payload[1]=4;
+    CHECK(TerminalCommands_Process(&remote,&command,TerminalCommands_ControlExecutor(),tick,&response)==TERMINAL_COMMAND_NEW);
+    CHECK(response.payload[2]==CONTROL_OK && response.payload[5]==4 && Lora_Read16(&response.payload[8])==1000);
+    Control_GetSnapshot(&state);CHECK(state.actuator.fan_level==4);
+    command.transaction=3;command.sequence=3;command.payload[0]=LORA_COMMAND_STOP;command.payload[1]=0;
+    CHECK(TerminalCommands_Process(&remote,&command,TerminalCommands_ControlExecutor(),tick,&response)==TERMINAL_COMMAND_NEW);
+    CHECK(response.payload[2]==CONTROL_OK && response.payload[3]==CONTROL_MODE_SAFE && response.payload[5]==0);
+    command.transaction=4;command.sequence=4;command.payload[0]=LORA_COMMAND_MUTE;command.payload[1]=1;
+    CHECK(TerminalCommands_Process(&remote,&command,TerminalCommands_ControlExecutor(),tick,&response)==TERMINAL_COMMAND_NEW);
+    CHECK(response.payload[12]&1U);
+    command.transaction=5;command.sequence=5;command.payload[0]=LORA_COMMAND_PUMP;command.payload[1]=1;
+    CHECK(TerminalCommands_Process(&remote,&command,TerminalCommands_ControlExecutor(),tick,&response)==TERMINAL_COMMAND_NEW);
+    CHECK(response.payload[2]==CONTROL_WRONG_MODE && response.payload[4]==0);
     printf("local UI/control integration: %u assertions failed, %u row refreshes\n",failures,refreshes);
     return failures ? 1:0;
 }

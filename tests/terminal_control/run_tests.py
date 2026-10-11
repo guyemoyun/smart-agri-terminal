@@ -37,6 +37,12 @@ def main():
                          root / "User/LoRa/terminal_telemetry.c"]
     }
     for name, sources in programs.items():
+        if name in ("policy", "link_service", "services"):
+            sources = sources + [root / "User/LoRa/lora_protocol.c"]
+        if name == "link_service":
+            sources += [root / "User/LoRa/lora_reliable.c", root / "User/LoRa/terminal_commands.c"]
+        if name == "services":
+            sources += [root / "User/LoRa/terminal_commands.c", root / "User/LoRa/terminal_command_control.c"]
         binary = output / (name + (".exe" if os.name == "nt" else ""))
         subprocess.run(common + ["-I", str(here / "stubs")] + list(map(str, sources)) + ["-o", str(binary), "-lm"], check=True, cwd=root)
         subprocess.run([str(binary)], check=True, cwd=root)

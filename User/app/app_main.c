@@ -56,7 +56,7 @@ void delay_ms(uint32_t ms)
     volatile uint32_t i, j;
     // ? 72MHz主频精准校准值，一行修改完成适配，核心逻辑不变
     uint32_t calibrate = 8000;  // 该值严格对应72MHz下约1ms延时
-    
+
     for(j = 0; j < ms; j++)
     {
         for(i = 0; i < calibrate; i++)
@@ -154,7 +154,7 @@ void app_main(void)
         Actuator_AllSafeOff();
         Error_Handler();
     }
-    printf("Terminal ready: MANUAL, outputs off, telemetry v2\r\n");
+    printf("Terminal ready: MANUAL, outputs off, duplex v3\r\n");
 
     while (1)
     {

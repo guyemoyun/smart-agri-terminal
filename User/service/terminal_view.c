@@ -84,10 +84,10 @@ void TerminalView_Format(uint8_t page, const SensorData_t *sensor,
     }
     else if (page == TERMINAL_PAGE_LINK)
     {
-        (void)snprintf(rows->row[0], width, "RADIO:%s 4/5", link->ready ? (link->tx_busy ? "TX" : "IDLE") : "WAIT");
-        (void)snprintf(rows->row[1], width, "Done:%lu", (unsigned long)link->tx_done_count);
-        (void)snprintf(rows->row[2], width, "Err:%lu", (unsigned long)link->tx_error_count);
-        (void)snprintf(rows->row[3], width, "Init:%lu", (unsigned long)link->init_error_count);
+        (void)snprintf(rows->row[0], width, "RF:%s GW:%s", link->ready ? (link->tx_busy ? "TX" : "RX") : "WAIT", link->gateway_online ? "ON" : "OFF");
+        (void)snprintf(rows->row[1], width, "ACK:%lu", (unsigned long)link->ack_count);
+        (void)snprintf(rows->row[2], width, "Retry:%lu", (unsigned long)link->retry_count);
+        (void)snprintf(rows->row[3], width, "Cmd:%lu", (unsigned long)link->command_count);
     }
     else
     {
